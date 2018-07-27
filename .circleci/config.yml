@@ -1,0 +1,108 @@
+---
+version: 2
+
+jobs:
+  build:
+    docker:
+    - image: docker:17.11.0-ce-git
+
+    environment:
+      DOCKER_NAMESPACE: "anchorfree"
+
+    steps:
+    - checkout
+    - setup_remote_docker:
+        docker_layer_caching: true
+    - run:
+        name: "docker login to repository"
+        command: |
+          docker login -u $DOCKERHUB_USERNAME -p $DOCKERHUB_PASSWORD
+    - run: 
+        name: "building docker image"
+        command: | 
+          docker build --file Dockerfile -t "${DOCKER_NAMESPACE}/${CIRCLE_PROJECT_REPONAME#docker-}:${CIRCLE_BRANCH}" .
+    - run:
+        name: "push docker image to dockerhub with tag=${CIRCLE_BRANCH}"
+        command: |
+          docker push ${DOCKER_NAMESPACE}/${CIRCLE_PROJECT_REPONAME#docker-}:${CIRCLE_BRANCH}
+
+  docker_hub_master:
+    docker:
+    - image: docker:17.11.0-ce-git
+
+    environment:
+      DOCKER_NAMESPACE: "anchorfree"
+
+    steps:
+    - checkout
+    - setup_remote_docker:
+        docker_layer_caching: true
+    - run:
+        name: "docker login to repository"
+        command: |
+          docker login -u $DOCKERHUB_USERNAME -p $DOCKERHUB_PASSWORD
+    - run:
+        name: "building docker image"
+        command: |
+          docker build --file Dockerfile -t "${DOCKER_NAMESPACE}/${CIRCLE_PROJECT_REPONAME#docker-}:latest" .
+    - run: 
+        name: "push docker image to dockerhub with tag=latest"
+        command: |
+          docker push ${DOCKER_NAMESPACE}/${CIRCLE_PROJECT_REPONAME#docker-}:latest
+
+  docker_hub_release_tags:
+    docker:
+    - image: docker:17.11.0-ce-git
+
+    environment:
+      DOCKER_NAMESPACE: "anchorfree"
+
+    steps:
+    - checkout
+    - setup_remote_docker:
+        docker_layer_caching: true
+    - run:
+        name: "docker login to repository"
+        command: |
+          docker login -u $DOCKERHUB_USERNAME -p $DOCKERHUB_PASSWORD
+    - run:
+        name: "building docker image"
+        command: |
+          if [[ -n "$CIRCLE_TAG" ]]; then
+          	docker build --file Dockerfile -t "${DOCKER_NAMESPACE}/${CIRCLE_PROJECT_REPONAME#docker-}:${CIRCLE_TAG}" .
+          else
+          	echo "Error: CIRCLE_TAG is not defined or empty"
+          	exit 1
+          fi
+    - run: 
+        name: "push docker image to dockerhub with release version tag"
+        command: |
+          docker push ${DOCKER_NAMESPACE}/${CIRCLE_PROJECT_REPONAME#docker-}:${CIRCLE_TAG}
+
+
+workflows:
+  version: 2
+  build:
+    jobs:
+    - build:
+        context: af-global
+        filters:
+          tags:
+            ignore: /^v.*/
+          branches:
+            only: /^[^-]+-[0-9]+.*/
+
+    - docker_hub_master:
+        context: af-global
+        filters:
+          branches:
+            only: master
+
+    - docker_hub_release_tags:
+        context: af-global
+        filters:
+          tags:
+            only: /^v[0-9]+(\.[0-9]+){1,2}$/
+          branches:
+            ignore: /.*/
+
